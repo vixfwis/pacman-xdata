@@ -1,4 +1,3 @@
-# $Id: PKGBUILD,v 1.157 2008/04/02 03:25:32 dan Exp $
 # Maintainer: Aaron Griffin <aaron@archlinux.org>
 # Maintainer: Dan McGee <dan@archlinux.org>
 
