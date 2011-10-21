@@ -1,3 +1,4 @@
+# vim: set ts=2 sw=2 et:
 # Maintainer: Dan McGee <dan@archlinux.org>
 # Maintainer: Dave Reisner <dave@archlinux.org>
 
@@ -11,8 +12,7 @@ license=('GPL')
 groups=('base')
 depends=('bash' 'glibc>=2.14' 'libarchive>=2.8.4' 'curl>=7.19.4'
          'gpgme' 'pacman-mirrorlist')
-optdepends=('fakeroot: for makepkg usage as normal user'
-            'curl: for rankmirrors usage')
+optdepends=('fakeroot: for makepkg usage as normal user')
 backup=(etc/pacman.conf etc/makepkg.conf)
 install=pacman.install
 options=(!libtool)
@@ -69,5 +69,3 @@ package() {
   mkdir -p $pkgdir/usr/share/zsh/site-functions/
   install -m644 contrib/zsh_completion $pkgdir/usr/share/zsh/site-functions/_pacman
 }
-
-# vim: set ts=2 sw=2 et:
