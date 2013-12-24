@@ -4,7 +4,7 @@
 
 pkgname=pacman
 pkgver=4.1.2
-pkgrel=4
+pkgrel=5
 pkgdesc="A library-based package manager with dependency support"
 arch=('i686' 'x86_64')
 url="http://www.archlinux.org/pacman/"
@@ -18,6 +18,7 @@ provides=('pacman-contrib')
 conflicts=('pacman-contrib')
 replaces=('pacman-contrib')
 backup=(etc/pacman.conf etc/makepkg.conf)
+options=('strip' 'debug')
 source=(ftp://ftp.archlinux.org/other/pacman/$pkgname-$pkgver.tar.gz{,.sig}
         pacman.conf.i686
         pacman.conf.x86_64
@@ -80,4 +81,6 @@ package() {
   for f in makepkg pacman-key; do
     ln -s pacman "$pkgdir/usr/share/bash-completion/completions/$f"
   done
+
+  install -Dm644 contrib/PKGBUILD.vim "$pkgdir/usr/share/vim/vimfiles/syntax/PKGBUILD.vim"
 }
