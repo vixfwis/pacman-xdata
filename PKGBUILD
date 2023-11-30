@@ -82,6 +82,14 @@ package() {
   install -dm755 "$pkgdir/etc"
   install -m644 "$srcdir/pacman.conf" "$pkgdir/etc"
   install -m644 "$srcdir/makepkg.conf" "$pkgdir/etc"
+
+  local wantsdir="$pkgdir/usr/lib/systemd/system/sockets.target.wants"
+  install -dm755 "$wantsdir"
+
+  local unit
+  for unit in dirmngr gpg-agent gpg-agent-{browser,extra,ssh} keyboxd; do
+    ln -s "../${unit}@.socket" "$wantsdir/${unit}@etc-pacman.d-gnupg.socket"
+  done
 }
 
 # vim: set ts=2 sw=2 et:
