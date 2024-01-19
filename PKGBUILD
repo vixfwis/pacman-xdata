@@ -27,6 +27,9 @@ source=(https://sources.archlinux.org/other/pacman/$pkgname-$pkgver.tar.xz{,.sig
         pacman-fix-compatibility-with-bash-5.2-patsub_replacement.patch::https://gitlab.archlinux.org/pacman/pacman/-/commit/0e938f188692c710be36f9dd9ea7b94381aed1b4.patch
         pacman-fix-order-of-fakechroot-fakeroot-nesting.patch::https://gitlab.archlinux.org/pacman/pacman/-/commit/05f283b5ad8f5b8f995076e93a27c8772076f872.patch
         pacman-change-default-checksum-from-md5-to-sha256.patch::https://gitlab.archlinux.org/pacman/pacman/-/commit/aa3a1bc3b50d797fb75278f79a83cd7dde50c66e.patch
+        pacman-sort-debuginfod-repro.patch::https://gitlab.archlinux.org/pacman/pacman/-/commit/843bf21e794c79c5b3bcf8a57e45ef9c62312fee.patch
+        pacman-split-off-strip-debug.patch::https://gitlab.archlinux.org/pacman/pacman/-/commit/7a4fff3310ba2eadd3d5428cbb92e58eb2ee853b.patch 
+        pacman-ignore-a-files.patch::https://gitlab.archlinux.org/pacman/pacman/-/commit/00d2b1f90261bf77eaaf262d2504af016562f2ac.patch
         pacman.conf
         makepkg.conf)
 sha256sums=('7d8e3e8c5121aec0965df71f59bedf46052c6cf14f96365c4411ec3de0a4c1a5'
@@ -38,6 +41,9 @@ sha256sums=('7d8e3e8c5121aec0965df71f59bedf46052c6cf14f96365c4411ec3de0a4c1a5'
             '8641d514ef4cae9e4d1867aadf4b9c850a9e8dc9792c6c559f9d2a0e1713a5a1'
             'b11f62d4bd9557e9d3e7456bc95f63e9eabab5ecee1368f4a14a84bc94b1c8d1'
             'cf749ad981e8f3dedd89c05a5e69a9c91d1e58ef9407e8f8e04ba9c183939623'
+            '17e7af22533984924aaf1cf36c74aa26b46b04ad140cd76b65521be906bd3ff7'
+            '94d1f3575d0c3faf8bf11fee8e5ef36c8b339ebfd24868931903ba179ffecf4e'
+            '96efb79a96abf8cdcecb9f8dc461552549cf46159f44bb4160eb073e1ea5000a'
             '656c4d4cb8cb12adbf178fc8cb2fd25f8c285d6572bbdbb24d865d00e0d5a85a'
             'b46bca4d3f8b41138923b7a1d7ada272b56ad8b89d0d6ce09145638bdf15185d')
 
