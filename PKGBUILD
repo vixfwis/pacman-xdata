@@ -35,17 +35,22 @@ prepare() {
   # revert libdepends and libprovides removal until we're ready
   patch -RNp1 < ../makepkg-remove-libdepends-and-libprovides.patch
 
-  # we backport way too often in pacman
-  # lets at least make it more convenient
-  local src
-  src=("${source[@]/makepkg-remove-libdepends-and-libprovides.patch*}")
-  for src in "${src[@]}"; do
-    src="${src%%::*}"
-    src="${src##*/}"
-    [[ $src = *.patch ]] || continue
-    msg2 "Applying patch $src..."
-    patch -Np1 < "../$src"
-  done
+  # apply potential patches/backports
+  local -a patches
+  patches=($(printf '%s\n' "${source[@]}" | grep '.patch'))
+  patches=("${patches[@]%%::*}")
+  patches=("${patches[@]##*/}")
+
+  # WARN: adjust/remove in the future
+  # remove reversed patch from array
+  patches=("${patches[@]:1}")
+
+  if (( ${#patches[@]} != 0 )); then
+    for patch in "${patches[@]}"; do
+      msg2 "Applying patch $patch..."
+      patch -Np1 < "../$patch"
+    done
+  fi
 }
 
 build() {
