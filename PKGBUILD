@@ -20,7 +20,7 @@ options=('strip')
 validpgpkeys=('6645B0A8C7005E78DB1D7864F99FFE0FEAE999BD'  # Allan McRae <allan@archlinux.org>
               'B8151B117037781095514CA7BBDFFC92306B1121') # Andrew Gregory (pacman) <andrew@archlinux.org>
 source=(https://gitlab.archlinux.org/pacman/pacman/-/releases/v$pkgver/downloads/pacman-$pkgver.tar.xz{,.sig}
-        makepkg-remove-libdepends-and-libprovides.patch::https://gitlab.archlinux.org/pacman/pacman/-/commit/354a300cd26bb1c7e6551473596be5ecced921de.patch
+        revertme-makepkg-remove-libdepends-and-libprovides.patch::https://gitlab.archlinux.org/pacman/pacman/-/commit/354a300cd26bb1c7e6551473596be5ecced921de.patch
         pacman.conf
         makepkg.conf)
 sha256sums=('5a60ac6e6bf995ba6140c7d038c34448df1f3daa4ae7141d2cad88eeb5f1f9d9'
@@ -32,23 +32,21 @@ sha256sums=('5a60ac6e6bf995ba6140c7d038c34448df1f3daa4ae7141d2cad88eeb5f1f9d9'
 prepare() {
   cd "$pkgname-$pkgver"
 
-  # revert libdepends and libprovides removal until we're ready
-  patch -RNp1 < ../makepkg-remove-libdepends-and-libprovides.patch
-
-  # apply potential patches/backports
+  # handle patches
   local -a patches
   patches=($(printf '%s\n' "${source[@]}" | grep '.patch'))
   patches=("${patches[@]%%::*}")
   patches=("${patches[@]##*/}")
 
-  # WARN: adjust/remove in the future
-  # remove reversed patch from array
-  patches=("${patches[@]:1}")
-
   if (( ${#patches[@]} != 0 )); then
     for patch in "${patches[@]}"; do
-      msg2 "Applying patch $patch..."
-      patch -Np1 < "../$patch"
+      if [[ $patch =~ revertme-* ]]; then
+        msg2 "Reverting patch $patch..."
+        patch -RNp1 < "../$patch"
+      else
+        msg2 "Applying patch $patch..."
+        patch -Np1 < "../$patch"
+      fi
     done
   fi
 }
