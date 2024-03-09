@@ -27,7 +27,7 @@ sha256sums=('5a60ac6e6bf995ba6140c7d038c34448df1f3daa4ae7141d2cad88eeb5f1f9d9'
             'SKIP'
             'b3bce9d662e189e8e49013b818f255d08494a57e13fc264625f852f087d3def2'
             '656c4d4cb8cb12adbf178fc8cb2fd25f8c285d6572bbdbb24d865d00e0d5a85a'
-            '9a7a4be6174b4e43c0070ee6291fea281fe172d7975fd3c1506cb451d2d761c4')
+            '2465d495cb275dce434eb3bfe4d293a223e301b968c14861aea42bc7c60404ef')
 
 prepare() {
   cd "$pkgname-$pkgver"
