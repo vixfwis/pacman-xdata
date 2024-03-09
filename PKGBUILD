@@ -2,8 +2,8 @@
 # Maintainer: Morten Linderud <foxboron@archlinux.org>
 
 pkgname=pacman
-pkgver=6.0.2
-pkgrel=9
+pkgver=6.1.0
+pkgrel=1
 pkgdesc="A library-based package manager with dependency support"
 arch=('x86_64')
 url="https://www.archlinux.org/pacman/"
@@ -19,54 +19,36 @@ backup=(etc/pacman.conf
 options=('strip')
 validpgpkeys=('6645B0A8C7005E78DB1D7864F99FFE0FEAE999BD'  # Allan McRae <allan@archlinux.org>
               'B8151B117037781095514CA7BBDFFC92306B1121') # Andrew Gregory (pacman) <andrew@archlinux.org>
-source=(https://sources.archlinux.org/other/pacman/$pkgname-$pkgver.tar.xz{,.sig}
-        pacman-always-create-directories-from-debugedit.patch::https://gitlab.archlinux.org/pacman/pacman/-/commit/efd0c24c07b86be014a4edb5a8ece021b87e3900.patch
-        pacman-always-create-directories-from-debugedit-fixup.patch::https://gitlab.archlinux.org/pacman/pacman/-/commit/86981383a2f4380bda26311831be94cdc743649b.patch
-        pacman-fix-unique-source-paths.patch::https://gitlab.archlinux.org/pacman/pacman/-/commit/478af273dfe24ded197ec54ae977ddc3719d74a0.patch
-        pacman-strip-include-o-files-similar-to-kernel-modules.patch::https://gitlab.archlinux.org/pacman/pacman/-/commit/de11824527ec4e2561e161ac40a5714ec943543c.patch
-        pacman-fix-compatibility-with-bash-5.2-patsub_replacement.patch::https://gitlab.archlinux.org/pacman/pacman/-/commit/0e938f188692c710be36f9dd9ea7b94381aed1b4.patch
-        pacman-fix-order-of-fakechroot-fakeroot-nesting.patch::https://gitlab.archlinux.org/pacman/pacman/-/commit/05f283b5ad8f5b8f995076e93a27c8772076f872.patch
-        pacman-change-default-checksum-from-md5-to-sha256.patch::https://gitlab.archlinux.org/pacman/pacman/-/commit/aa3a1bc3b50d797fb75278f79a83cd7dde50c66e.patch
-        pacman-sort-debuginfod-repro.patch::https://gitlab.archlinux.org/pacman/pacman/-/commit/843bf21e794c79c5b3bcf8a57e45ef9c62312fee.patch
-        pacman-split-off-strip-debug.patch::https://gitlab.archlinux.org/pacman/pacman/-/commit/7a4fff3310ba2eadd3d5428cbb92e58eb2ee853b.patch 
-        pacman-ignore-a-files.patch::https://gitlab.archlinux.org/pacman/pacman/-/commit/00d2b1f90261bf77eaaf262d2504af016562f2ac.patch
-        pacman-early-err-git.patch::https://gitlab.archlinux.org/pacman/pacman/-/commit/3aa096a74f717d31650e0eb3cf34e9a5ebadc313.patch
-        pacman-fix-gnupg-binary-data.patch::https://gitlab.archlinux.org/pacman/pacman/-/commit/86ec26b2d33372a4b3bda48f22c4a9f226c3ccce.patch
-        pacman-fix-gnupg-newsig-check.patch::https://gitlab.archlinux.org/pacman/pacman/-/commit/16a064701a30d7e1175e1185cc6da44238302fab.patch
-        pacman-check-pipes-gnupg.patch::https://gitlab.archlinux.org/pacman/pacman/-/commit/f8c2e59ec57c86827b1f1b1c2f6760dc3e59fe40.patch
+source=(https://gitlab.archlinux.org/pacman/pacman/-/releases/v$pkgver/downloads/pacman-$pkgver.tar.xz{,.sig}
+        revertme-makepkg-remove-libdepends-and-libprovides.patch::https://gitlab.archlinux.org/pacman/pacman/-/commit/354a300cd26bb1c7e6551473596be5ecced921de.patch
         pacman.conf
         makepkg.conf)
-sha256sums=('7d8e3e8c5121aec0965df71f59bedf46052c6cf14f96365c4411ec3de0a4c1a5'
+sha256sums=('5a60ac6e6bf995ba6140c7d038c34448df1f3daa4ae7141d2cad88eeb5f1f9d9'
             'SKIP'
-            '6fed94326b9ecfbb438ab17a4576b5e9d52ecc0f4574f29d46adfde3886dee03'
-            'd2bc104788290e3de829a232590b66ad745cf5b4762a01acc1191ebf70fef114'
-            'f3d4f39ef24e312f610cbb3439fb02bc6b8829e37bcf1a50ae50cd0a69bde5d0'
-            'd87d0c9957c613fda272553bee58140349d151ae399f346ddaf6d75ee5916312'
-            '8641d514ef4cae9e4d1867aadf4b9c850a9e8dc9792c6c559f9d2a0e1713a5a1'
-            'b11f62d4bd9557e9d3e7456bc95f63e9eabab5ecee1368f4a14a84bc94b1c8d1'
-            'cf749ad981e8f3dedd89c05a5e69a9c91d1e58ef9407e8f8e04ba9c183939623'
-            '17e7af22533984924aaf1cf36c74aa26b46b04ad140cd76b65521be906bd3ff7'
-            '94d1f3575d0c3faf8bf11fee8e5ef36c8b339ebfd24868931903ba179ffecf4e'
-            '96efb79a96abf8cdcecb9f8dc461552549cf46159f44bb4160eb073e1ea5000a'
-            '0ac6a34e6fc126a243a642e509f459f6cde20af213ab949791a5cc325cf031f9'
-            '6e81b34e6a5f312d48ce3aaca0f02ddd10b7a43325cb32acf7666b6b7ac41552'
-            '250598a27a3077ec1dfe97a30af8bb0daf449d3ab456ed6a0c7a5bea0eb58f51'
-            '94c273f07e4e28125b6002567c62e1f6c65f543597de6a8bd79e8c5bf6e4a125'
+            'b3bce9d662e189e8e49013b818f255d08494a57e13fc264625f852f087d3def2'
             '656c4d4cb8cb12adbf178fc8cb2fd25f8c285d6572bbdbb24d865d00e0d5a85a'
-            'f2791b51588104ec6dbaafa389451056f3c61fa6c19510dcce3a9a6cc19cba29')
+            '9a7a4be6174b4e43c0070ee6291fea281fe172d7975fd3c1506cb451d2d761c4')
 
 prepare() {
-  cd "${pkgname}-${pkgver}"
-  # we backport way too often in pacman
-  # lets at least make it more convenient
-  local src
-  for src in "${source[@]}"; do
-    src="${src%%::*}"
-    src="${src##*/}"
-    [[ $src = *.patch ]] || continue
-    msg2 "Applying patch $src..."
-    patch -Np1 < "../$src"
-  done
+  cd "$pkgname-$pkgver"
+
+  # handle patches
+  local -a patches
+  patches=($(printf '%s\n' "${source[@]}" | grep '.patch'))
+  patches=("${patches[@]%%::*}")
+  patches=("${patches[@]##*/}")
+
+  if (( ${#patches[@]} != 0 )); then
+    for patch in "${patches[@]}"; do
+      if [[ $patch =~ revertme-* ]]; then
+        msg2 "Reverting patch $patch..."
+        patch -RNp1 < "../$patch"
+      else
+        msg2 "Applying patch $patch..."
+        patch -Np1 < "../$patch"
+      fi
+    done
+  fi
 }
 
 build() {
