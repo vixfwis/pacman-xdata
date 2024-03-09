@@ -28,7 +28,7 @@ pkgbase = pacman
 	backup = etc/makepkg.conf
 	source = https://gitlab.archlinux.org/pacman/pacman/-/releases/v6.1.0/downloads/pacman-6.1.0.tar.xz
 	source = https://gitlab.archlinux.org/pacman/pacman/-/releases/v6.1.0/downloads/pacman-6.1.0.tar.xz.sig
-	source = REVERT-ME_makepkg-remove-libdepends-and-libprovides.patch::https://gitlab.archlinux.org/pacman/pacman/-/commit/354a300cd26bb1c7e6551473596be5ecced921de.patch
+	source = revertme-makepkg-remove-libdepends-and-libprovides.patch::https://gitlab.archlinux.org/pacman/pacman/-/commit/354a300cd26bb1c7e6551473596be5ecced921de.patch
 	source = pacman.conf
 	source = makepkg.conf
 	validpgpkeys = 6645B0A8C7005E78DB1D7864F99FFE0FEAE999BD
@@ -37,6 +37,6 @@ pkgbase = pacman
 	sha256sums = SKIP
 	sha256sums = b3bce9d662e189e8e49013b818f255d08494a57e13fc264625f852f087d3def2
 	sha256sums = 656c4d4cb8cb12adbf178fc8cb2fd25f8c285d6572bbdbb24d865d00e0d5a85a
-	sha256sums = 9a7a4be6174b4e43c0070ee6291fea281fe172d7975fd3c1506cb451d2d761c4
+	sha256sums = 2465d495cb275dce434eb3bfe4d293a223e301b968c14861aea42bc7c60404ef
 
 pkgname = pacman
