@@ -3,7 +3,7 @@
 
 pkgname=pacman
 pkgver=6.1.0
-pkgrel=1
+pkgrel=2
 pkgdesc="A library-based package manager with dependency support"
 arch=('x86_64')
 url="https://www.archlinux.org/pacman/"
@@ -21,11 +21,21 @@ validpgpkeys=('6645B0A8C7005E78DB1D7864F99FFE0FEAE999BD'  # Allan McRae <allan@a
               'B8151B117037781095514CA7BBDFFC92306B1121') # Andrew Gregory (pacman) <andrew@archlinux.org>
 source=(https://gitlab.archlinux.org/pacman/pacman/-/releases/v$pkgver/downloads/pacman-$pkgver.tar.xz{,.sig}
         revertme-makepkg-remove-libdepends-and-libprovides.patch::https://gitlab.archlinux.org/pacman/pacman/-/commit/354a300cd26bb1c7e6551473596be5ecced921de.patch
+        "$pkgname-fix-msg-unknown-key.patch::https://gitlab.archlinux.org/pacman/pacman/-/commit/6bb95c8856437513ee0ab19226bc090d6fd0fb06.patch"
+        "$pkgname-man-gitlab.patch::https://gitlab.archlinux.org/pacman/pacman/-/commit/95f148c2222db608a0d72d5c5577d0c71e7fa199.patch"
+        "$pkgname-make-aligned-titles.patch::https://gitlab.archlinux.org/pacman/pacman/-/commit/5e0496260b7d3f9c9fcf2b1c4899e4dbcc20ff03.patch"
+        "$pkgname-repo-add-parseopts.patch::https://gitlab.archlinux.org/pacman/pacman/-/commit/0571ee82bff0edbd5ffac2228d4e6ac510b9008e.patch"
+        "$pkgname-drop-result-warn.patch::https://gitlab.archlinux.org/pacman/pacman/-/commit/111eed0251238a9d3f90e76d62f2ac01aeccce48.patch"
         pacman.conf
         makepkg.conf)
 sha256sums=('5a60ac6e6bf995ba6140c7d038c34448df1f3daa4ae7141d2cad88eeb5f1f9d9'
             'SKIP'
             'b3bce9d662e189e8e49013b818f255d08494a57e13fc264625f852f087d3def2'
+            '94c987046c2ff232fa0d395cddc11644840d767806711e04ef34f876a9baf217'
+            '0774d7035e34661f74b673d4b0a94be877bdc0158a555b873ec6bd4e2c936377'
+            '7bb64910265ce2590f593cdfd302076e49f67a68f8cc792a9aaac572d36fc842'
+            '2bbfe40539513ff5775aaf900644c8985ef618f5df9af856b9d571e2501365b0'
+            '160515b741aadc876a67f213029f5f62a51ff072ea4aaeb687bbe614035bf72f'
             '656c4d4cb8cb12adbf178fc8cb2fd25f8c285d6572bbdbb24d865d00e0d5a85a'
             '2465d495cb275dce434eb3bfe4d293a223e301b968c14861aea42bc7c60404ef')
 
