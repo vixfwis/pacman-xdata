@@ -1,0 +1,429 @@
+diff --git a/lib/libalpm/alpm.h b/lib/libalpm/alpm.h
+index 268f7213..04f55e80 100644
+--- a/lib/libalpm/alpm.h
++++ b/lib/libalpm/alpm.h
+@@ -1445,6 +1445,17 @@ alpm_list_t *alpm_db_get_groupcache(alpm_db_t *db);
+ int alpm_db_search(alpm_db_t *db, const alpm_list_t *needles,
+ 		alpm_list_t **ret);
+ 
++/** Searches a database with regular expressions.
++ * @param db pointer to the package database to search in
++ * @param needles a list of regular expressions to search for
++ * @param xdata a list of regular expressions to search in extended data field
++ * @param ret pointer to list for storing packages matching all
++ * regular expressions - must point to an empty (NULL) alpm_list_t *.
++ * @return 0 on success, -1 on error (pm_errno is set accordingly)
++ */
++int alpm_db_search_xdata(alpm_db_t *db, const alpm_list_t *needles,
++		const alpm_list_t *xdata, alpm_list_t **ret);
++
+ /** The usage level of a database. */
+ typedef enum _alpm_db_usage_t {
+        /** Enable refreshes for this database */
+@@ -2658,6 +2669,25 @@ int alpm_pkg_get_validation(alpm_pkg_t *pkg);
+  */
+ alpm_list_t *alpm_pkg_get_xdata(alpm_pkg_t *pkg);
+ 
++/** Updates the extended data field of a package. Will overwrite
++ * xdata kv-pairs with same name
++ * @param pkg a pointer to package
++ * @param xdata_lst a reference to a list of alpm_pkg_xdata_t objects
++ * @return 0 on success, -1 on error (pm_errno is set accordingly)
++ */
++int alpm_pkg_xdata_update(alpm_pkg_t *pkg, alpm_list_t *xdata_lst);
++
++/** Parse string into an extended data structure
++ * @param string a pointer to string
++ * @return a reference to xdata on success, NULL on failure
++ */
++alpm_pkg_xdata_t *alpm_pkg_parse_xdata(const char *string);
++
++/** Free an extended data structure.
++ * @param xdata a reference to an xdata to free
++ */
++void alpm_pkg_xdata_free(alpm_pkg_xdata_t *xdata);
++
+ /** Returns whether the package has an install scriptlet.
+  * @return 0 if FALSE, TRUE otherwise
+  */
+diff --git a/lib/libalpm/db.c b/lib/libalpm/db.c
+index d949b645..b70e4157 100644
+--- a/lib/libalpm/db.c
++++ b/lib/libalpm/db.c
+@@ -350,7 +350,17 @@ int SYMEXPORT alpm_db_search(alpm_db_t *db, const alpm_list_t *needles,
+ 			RET_ERR(db->handle, ALPM_ERR_WRONG_ARGS, -1));
+ 	db->handle->pm_errno = ALPM_ERR_OK;
+ 
+-	return _alpm_db_search(db, needles, ret);
++	return _alpm_db_search(db, needles, NULL, ret);
++}
++
++int SYMEXPORT alpm_db_search_xdata(alpm_db_t *db, const alpm_list_t *needles,
++		const alpm_list_t *xdata, alpm_list_t **ret)
++{
++	ASSERT(db != NULL && ret != NULL && *ret == NULL,
++			RET_ERR(db->handle, ALPM_ERR_WRONG_ARGS, -1));
++	db->handle->pm_errno = ALPM_ERR_OK;
++
++	return _alpm_db_search(db, needles, xdata, ret);
+ }
+ 
+ int SYMEXPORT alpm_db_set_usage(alpm_db_t *db, int usage)
+@@ -440,7 +450,7 @@ int _alpm_db_cmp(const void *d1, const void *d2)
+ }
+ 
+ int _alpm_db_search(alpm_db_t *db, const alpm_list_t *needles,
+-		alpm_list_t **ret)
++		const alpm_list_t *xdata, alpm_list_t **ret)
+ {
+ 	const alpm_list_t *i, *j, *k;
+ 
+@@ -451,6 +461,58 @@ int _alpm_db_search(alpm_db_t *db, const alpm_list_t *needles,
+ 	/* copy the pkgcache- we will free the list var after each needle */
+ 	alpm_list_t *list = alpm_list_copy(_alpm_db_get_pkgcache(db));
+ 
++	/*TODO: there's a lot of overlap with default search code.
++	 * maybe move it all to separate static func? */
++
++	/* search in extended data field */
++	for(i = xdata; i; i = i->next) {
++		char *targ;
++		regex_t reg;
++
++		if(i->data == NULL) {
++			continue;
++		}
++		*ret = NULL;
++		targ = i->data;
++		_alpm_log(db->handle, ALPM_LOG_DEBUG, "searching for '%s' in extended data field\n", targ);
++
++		if(regcomp(&reg, targ, REG_EXTENDED | REG_NOSUB | REG_ICASE | REG_NEWLINE) != 0) {
++			db->handle->pm_errno = ALPM_ERR_INVALID_REGEX;
++			alpm_list_free(list);
++			alpm_list_free(*ret);
++			return -1;
++		}
++
++		for(j = list; j; j = j->next) {
++			alpm_pkg_t *pkg = j->data;
++			for(k = alpm_pkg_get_xdata(pkg); k; k = k->next) {
++				alpm_pkg_xdata_t *pkg_xdata = k->data;
++				/* pack xdata into flat cstring for searching */
++				char *xdata_str = NULL;
++				int maxlen = strlen(pkg_xdata->name) + strlen(pkg_xdata->value) + 2;
++				CALLOC(xdata_str, 1, maxlen,
++						db->handle->pm_errno = ALPM_ERR_MEMORY;
++						alpm_list_free(list);
++						alpm_list_free(*ret);
++						return -1
++				);
++				snprintf(xdata_str, maxlen, "%s=%s", pkg_xdata->name, pkg_xdata->value);
++				if(regexec(&reg, xdata_str, 0, 0, 0) == 0 || strstr(xdata_str, targ)) {
++					_alpm_log(db->handle, ALPM_LOG_DEBUG,
++							"search in xdata for '%s' matched on package '%s'\n",
++							targ, pkg->name);
++					*ret = alpm_list_add(*ret, pkg);
++				}
++			}
++		}
++
++		/* Free the existing search list, and use the returned list for the
++		 * next needle. This allows for AND-based package searching. */
++		alpm_list_free(list);
++		list = *ret;
++		regfree(&reg);
++	}
++
+ 	for(i = needles; i; i = i->next) {
+ 		char *targ;
+ 		regex_t reg;
+diff --git a/lib/libalpm/db.h b/lib/libalpm/db.h
+index ae1f0f74..9c6fd9b7 100644
+--- a/lib/libalpm/db.h
++++ b/lib/libalpm/db.h
+@@ -89,7 +89,7 @@ void _alpm_db_free(alpm_db_t *db);
+ const char *_alpm_db_path(alpm_db_t *db);
+ int _alpm_db_cmp(const void *d1, const void *d2);
+ int _alpm_db_search(alpm_db_t *db, const alpm_list_t *needles,
+-		alpm_list_t **ret);
++		const alpm_list_t *xdata, alpm_list_t **ret);
+ alpm_db_t *_alpm_db_register_local(alpm_handle_t *handle);
+ alpm_db_t *_alpm_db_register_sync(alpm_handle_t *handle, const char *treename,
+ 		int level);
+diff --git a/lib/libalpm/package.c b/lib/libalpm/package.c
+index a294d636..24f409e9 100644
+--- a/lib/libalpm/package.c
++++ b/lib/libalpm/package.c
+@@ -47,6 +47,55 @@ int SYMEXPORT alpm_pkg_free(alpm_pkg_t *pkg)
+ 	return 0;
+ }
+ 
++alpm_pkg_xdata_t SYMEXPORT *alpm_pkg_parse_xdata(const char *string) {
++  ASSERT(string != NULL, return NULL);
++
++  return _alpm_pkg_parse_xdata(string);
++}
++
++int SYMEXPORT alpm_pkg_xdata_update(alpm_pkg_t *pkg, alpm_list_t *xdata_lst) {
++	ASSERT(pkg != NULL, return -1);
++	pkg->handle->pm_errno = ALPM_ERR_OK;
++	if(xdata_lst == NULL) {
++		return 0;
++	}
++
++	alpm_list_t *pkg_xdata_lst = alpm_pkg_get_xdata(pkg);
++	for(alpm_list_t *i = xdata_lst; i; i = alpm_list_next(xdata_lst)) {
++		alpm_pkg_xdata_t *xdata = i->data;
++		int found_existing_key = 0;
++		for(alpm_list_t *j = pkg_xdata_lst; j; j = alpm_list_next(j)) {
++			alpm_pkg_xdata_t *pkg_xdata = j->data;
++			if(strcmp(pkg_xdata->name, xdata->name) == 0) {
++				found_existing_key = 1;
++				alpm_pkg_xdata_t *new_xdata = _alpm_pkg_xdata_dup(xdata);
++				if(new_xdata == NULL) {
++					pkg->handle->pm_errno = ALPM_ERR_MEMORY;
++					return -1;
++				}
++				j->data = new_xdata;
++				alpm_pkg_xdata_free(pkg_xdata);
++			}
++		}
++		if(!found_existing_key) {
++			alpm_pkg_xdata_t *new_xdata = _alpm_pkg_xdata_dup(xdata);
++			if(new_xdata == NULL) {
++				pkg->handle->pm_errno = ALPM_ERR_MEMORY;
++				return -1;
++			}
++			pkg_xdata_lst = alpm_list_add(pkg_xdata_lst, new_xdata);
++		}
++	}
++	_alpm_pkg_set_xdata(pkg, pkg_xdata_lst);
++	return 0;
++}
++
++void SYMEXPORT alpm_pkg_xdata_free(alpm_pkg_xdata_t *xdata) {
++  ASSERT(xdata != NULL, return);
++
++  _alpm_pkg_xdata_free(xdata);
++}
++
+ int SYMEXPORT alpm_pkg_checkmd5sum(alpm_pkg_t *pkg)
+ {
+ 	char *fpath;
+@@ -101,6 +150,11 @@ static alpm_filelist_t *_pkg_get_files(alpm_pkg_t *pkg)  { return &(pkg->files);
+ static alpm_list_t *_pkg_get_backup(alpm_pkg_t *pkg)     { return pkg->backup; }
+ static alpm_list_t *_pkg_get_xdata(alpm_pkg_t *pkg)      { return pkg->xdata; }
+ 
++static void _pkg_set_xdata(alpm_pkg_t *pkg, alpm_list_t *xdata_lst)
++{
++	pkg->xdata = xdata_lst;
++}
++
+ static void *_pkg_changelog_open(alpm_pkg_t UNUSED *pkg)
+ {
+ 	return NULL;
+@@ -165,6 +219,7 @@ const struct pkg_operations default_pkg_ops = {
+ 	.get_files       = _pkg_get_files,
+ 	.get_backup      = _pkg_get_backup,
+ 	.get_xdata       = _pkg_get_xdata,
++	.set_xdata       = _pkg_set_xdata,
+ 
+ 	.changelog_open  = _pkg_changelog_open,
+ 	.changelog_read  = _pkg_changelog_read,
+@@ -495,6 +550,12 @@ alpm_list_t SYMEXPORT *alpm_pkg_get_xdata(alpm_pkg_t *pkg)
+ 	return pkg->ops->get_xdata(pkg);
+ }
+ 
++void _alpm_pkg_set_xdata(alpm_pkg_t *pkg, alpm_list_t *xdata) {
++  ASSERT(pkg != NULL, return);
++  pkg->handle->pm_errno = ALPM_ERR_OK;
++  pkg->ops->set_xdata(pkg, xdata);
++}
++
+ static void find_requiredby(alpm_pkg_t *pkg, alpm_db_t *db, alpm_list_t **reqs,
+ 		int optional)
+ {
+@@ -702,6 +763,17 @@ alpm_pkg_xdata_t *_alpm_pkg_parse_xdata(const char *string)
+ 	return pd;
+ }
+ 
++alpm_pkg_xdata_t *_alpm_pkg_xdata_dup(const alpm_pkg_xdata_t *xdata) {
++  ASSERT(xdata != NULL, return NULL);
++
++  alpm_pkg_xdata_t *new_xdata;
++  CALLOC(new_xdata, 1, sizeof(alpm_pkg_xdata_t), return NULL);
++  STRDUP(new_xdata->name, xdata->name, FREE(new_xdata); return NULL);
++  STRDUP(new_xdata->value, xdata->value, FREE(new_xdata->name); FREE(new_xdata);
++         return NULL);
++  return new_xdata;
++}
++
+ void _alpm_pkg_xdata_free(alpm_pkg_xdata_t *pd)
+ {
+ 	if(pd) {
+diff --git a/lib/libalpm/package.h b/lib/libalpm/package.h
+index c210ce19..db7ffa51 100644
+--- a/lib/libalpm/package.h
++++ b/lib/libalpm/package.h
+@@ -68,6 +68,7 @@ struct pkg_operations {
+ 	alpm_list_t *(*get_backup) (alpm_pkg_t *);
+ 
+ 	alpm_list_t *(*get_xdata) (alpm_pkg_t *);
++	void (*set_xdata) (alpm_pkg_t *, alpm_list_t *xdata);
+ 
+ 	void *(*changelog_open) (alpm_pkg_t *);
+ 	size_t (*changelog_read) (void *, size_t, const alpm_pkg_t *, void *);
+@@ -163,6 +164,8 @@ int _alpm_pkg_cmp(const void *p1, const void *p2);
+ int _alpm_pkg_compare_versions(alpm_pkg_t *local_pkg, alpm_pkg_t *pkg);
+ 
+ alpm_pkg_xdata_t *_alpm_pkg_parse_xdata(const char *string);
++alpm_pkg_xdata_t *_alpm_pkg_xdata_dup(const alpm_pkg_xdata_t *xdata);
++void _alpm_pkg_set_xdata(alpm_pkg_t *pkg, alpm_list_t *xdata_lst);
+ void _alpm_pkg_xdata_free(alpm_pkg_xdata_t *pd);
+ 
+ int _alpm_pkg_check_meta(alpm_pkg_t *pkg);
+diff --git a/lib/libalpm/sync.c b/lib/libalpm/sync.c
+index e73b8ffc..f4654114 100644
+--- a/lib/libalpm/sync.c
++++ b/lib/libalpm/sync.c
+@@ -1208,6 +1208,8 @@ static int load_packages(alpm_handle_t *handle, alpm_list_t **data,
+ 			continue;
+ 		}
+ 		free(filepath);
++		/* update extended data field */
++		alpm_pkg_xdata_update(pkgfile, spkg->xdata);
+ 		/* copy over the install reason */
+ 		pkgfile->reason = spkg->reason;
+ 		/* copy over validation method */
+diff --git a/src/pacman/conf.h b/src/pacman/conf.h
+index e9f17123..eaea1cdb 100644
+--- a/src/pacman/conf.h
++++ b/src/pacman/conf.h
+@@ -126,6 +126,7 @@ typedef struct __config_t {
+ 	alpm_list_t *noupgrade;
+ 	alpm_list_t *noextract;
+ 	alpm_list_t *overwrite_files;
++	alpm_list_t *xdata;
+ 	char *xfercommand;
+ 	char **xfercommand_argv;
+ 	size_t xfercommand_argc;
+@@ -212,7 +213,8 @@ enum {
+ 	OP_DOWNLOADONLY,
+ 	OP_REFRESH,
+ 	OP_ASSUMEINSTALLED,
+-	OP_DISABLEDLTIMEOUT
++	OP_DISABLEDLTIMEOUT,
++	OP_XDATA
+ };
+ 
+ /* clean method */
+diff --git a/src/pacman/package.c b/src/pacman/package.c
+index ead623a8..a18be4e5 100644
+--- a/src/pacman/package.c
++++ b/src/pacman/package.c
+@@ -548,9 +548,15 @@ int dump_pkg_search(alpm_db_t *db, alpm_list_t *targets, int show_status)
+ 	}
+ 
+ 	/* if we have a targets list, search for packages matching it */
+-	if(targets) {
+-		if(alpm_db_search(db, targets, &searchlist) != 0) {
+-			return -1;
++	if(targets || config->xdata) {
++		if(config->xdata) {
++			if(alpm_db_search_xdata(db, targets, config->xdata, &searchlist) != 0) {
++				return -1;
++			}
++		}else {
++			if(alpm_db_search(db, targets, &searchlist) != 0) {
++				return -1;
++			}
+ 		}
+ 		freelist = 1;
+ 	} else {
+diff --git a/src/pacman/pacman.c b/src/pacman/pacman.c
+index 6b64ffc7..7d7c5f5f 100644
+--- a/src/pacman/pacman.c
++++ b/src/pacman/pacman.c
+@@ -147,6 +147,9 @@ static void usage(int op, const char * const myname)
+ 			addlist(_("  -p, --file <package> query a package file instead of the database\n"));
+ 			addlist(_("  -q, --quiet          show less information for query and search\n"));
+ 			addlist(_("  -s, --search <regex> search locally-installed packages for matching strings\n"));
++			addlist(_("      --xdata-search <regex>\n"
++					  "                       search locally-installed packages for matching strings\n"
++					  "                       inside extended data field\n"));
+ 			addlist(_("  -t, --unrequired     list packages not (optionally) required by any\n"
+ 			          "                       package (-tt to ignore optdepends) [filter]\n"));
+ 			addlist(_("  -u, --upgrades       list outdated packages [filter]\n"));
+@@ -193,6 +196,8 @@ static void usage(int op, const char * const myname)
+ 				          "                       overwrite conflicting files (can be used more than once)\n"));
+ 				addlist(_("      --asdeps         install packages as non-explicitly installed\n"));
+ 				addlist(_("      --asexplicit     install packages as explicitly installed\n"));
++				addlist(_("      --xdata <key>=<value>\n"
++						  "                       set extended data for package\n"));
+ 				addlist(_("      --ignore <pkg>   ignore a package upgrade (can be used more than once)\n"));
+ 				addlist(_("      --ignoregroup <grp>\n"
+ 				          "                       ignore a group upgrade (can be used more than once)\n"));
+@@ -592,6 +597,10 @@ static int parsearg_query(int opt)
+ 		case 's':
+ 			config->op_q_search = 1;
+ 			break;
++		case OP_XDATA:
++			config->op_q_search = 1;
++			parsearg_util_addlist(&(config->xdata));
++			break;
+ 		case OP_UNREQUIRED:
+ 		case 't':
+ 			(config->op_q_unrequired)++;
+@@ -759,6 +768,9 @@ static int parsearg_upgrade(int opt)
+ 		case OP_NEEDED:
+ 			config->flags |= ALPM_TRANS_FLAG_NEEDED;
+ 			break;
++		case OP_XDATA:
++			parsearg_util_addlist(&(config->xdata));
++			break;
+ 		case OP_IGNORE:
+ 			parsearg_util_addlist(&(config->ignorepkg));
+ 			break;
+@@ -970,6 +982,8 @@ static int parseargs(int argc, char *argv[])
+ 		{"ignoregroup", required_argument, 0, OP_IGNOREGROUP},
+ 		{"needed",     no_argument,       0, OP_NEEDED},
+ 		{"asexplicit",     no_argument,   0, OP_ASEXPLICIT},
++		{"xdata",     required_argument,   0, OP_XDATA},
++		{"xdata-search", required_argument,   0, OP_XDATA},
+ 		{"arch",       required_argument, 0, OP_ARCH},
+ 		{"print-format", required_argument, 0, OP_PRINTFORMAT},
+ 		{"gpgdir",     required_argument, 0, OP_GPGDIR},
+diff --git a/src/pacman/sync.c b/src/pacman/sync.c
+index 95340db1..0a915c60 100644
+--- a/src/pacman/sync.c
++++ b/src/pacman/sync.c
+@@ -822,6 +822,29 @@ int sync_prepare_execute(void)
+ 		goto cleanup;
+ 	}
+ 
++	/* Step 2.1: set extended data fields */
++	alpm_list_t *xdata_lst = NULL;
++	for(i = config->xdata; i; i = alpm_list_next(i)) {
++		const char *xdata_arg = i->data;
++		alpm_pkg_xdata_t *xdata = alpm_pkg_parse_xdata(xdata_arg);
++		if(xdata == NULL) {
++			pm_printf(ALPM_LOG_ERROR, _("failed to parse extended data field: %s\n"), xdata_arg);
++			retval = 1;
++			goto cleanup;
++		}
++		alpm_list_append(&xdata_lst, xdata);
++	}
++	for(alpm_list_t *j = packages; j; j = alpm_list_next(j)) {
++		alpm_pkg_t *pkg = j->data;
++		if(alpm_pkg_xdata_update(pkg, xdata_lst) != 0) {
++			alpm_errno_t err = alpm_errno(config->handle);
++			pm_printf(ALPM_LOG_ERROR, _("failed to update extended data fields (%s)\n"),
++					alpm_strerror(err));
++		}
++	}
++	alpm_list_free_inner(xdata_lst, (alpm_list_fn_free)alpm_pkg_xdata_free);
++	alpm_list_free(xdata_lst);
++
+ 	/* Step 3: actually perform the operation */
+ 	if(config->print) {
+ 		print_packages(packages);
