@@ -151,7 +151,7 @@ index ae1f0f74..9c6fd9b7 100644
  alpm_db_t *_alpm_db_register_sync(alpm_handle_t *handle, const char *treename,
  		int level);
 diff --git a/lib/libalpm/package.c b/lib/libalpm/package.c
-index a294d636..24f409e9 100644
+index a294d636..593fd522 100644
 --- a/lib/libalpm/package.c
 +++ b/lib/libalpm/package.c
 @@ -47,6 +47,55 @@ int SYMEXPORT alpm_pkg_free(alpm_pkg_t *pkg)
@@ -172,7 +172,7 @@ index a294d636..24f409e9 100644
 +	}
 +
 +	alpm_list_t *pkg_xdata_lst = alpm_pkg_get_xdata(pkg);
-+	for(alpm_list_t *i = xdata_lst; i; i = alpm_list_next(xdata_lst)) {
++	for(alpm_list_t *i = xdata_lst; i; i = alpm_list_next(i)) {
 +		alpm_pkg_xdata_t *xdata = i->data;
 +		int found_existing_key = 0;
 +		for(alpm_list_t *j = pkg_xdata_lst; j; j = alpm_list_next(j)) {
@@ -394,15 +394,23 @@ index 6b64ffc7..7d7c5f5f 100644
  		{"print-format", required_argument, 0, OP_PRINTFORMAT},
  		{"gpgdir",     required_argument, 0, OP_GPGDIR},
 diff --git a/src/pacman/sync.c b/src/pacman/sync.c
-index 95340db1..0a915c60 100644
+index 95340db1..dd01354d 100644
 --- a/src/pacman/sync.c
 +++ b/src/pacman/sync.c
-@@ -822,6 +822,29 @@ int sync_prepare_execute(void)
+@@ -761,7 +761,7 @@ static void print_broken_dep(alpm_depmissing_t *miss)
+ 
+ int sync_prepare_execute(void)
+ {
+-	alpm_list_t *i, *packages, *data = NULL;
++	alpm_list_t *i, *packages, *data = NULL, *xdata_lst = NULL;
+ 	int retval = 0;
+ 
+ 	/* Step 2: "compute" the transaction based on targets and flags */
+@@ -822,6 +822,50 @@ int sync_prepare_execute(void)
  		goto cleanup;
  	}
  
 +	/* Step 2.1: set extended data fields */
-+	alpm_list_t *xdata_lst = NULL;
 +	for(i = config->xdata; i; i = alpm_list_next(i)) {
 +		const char *xdata_arg = i->data;
 +		alpm_pkg_xdata_t *xdata = alpm_pkg_parse_xdata(xdata_arg);
@@ -413,17 +421,49 @@ index 95340db1..0a915c60 100644
 +		}
 +		alpm_list_append(&xdata_lst, xdata);
 +	}
++
++	alpm_db_t *localdb = alpm_get_localdb(config->handle);
 +	for(alpm_list_t *j = packages; j; j = alpm_list_next(j)) {
 +		alpm_pkg_t *pkg = j->data;
-+		if(alpm_pkg_xdata_update(pkg, xdata_lst) != 0) {
-+			alpm_errno_t err = alpm_errno(config->handle);
-+			pm_printf(ALPM_LOG_ERROR, _("failed to update extended data fields (%s)\n"),
-+					alpm_strerror(err));
++		const char *pkg_name = alpm_pkg_get_name(pkg);
++		alpm_pkg_t *localpkg = alpm_db_get_pkg(localdb, pkg_name);
++		if(localpkg == NULL) {
++			if(alpm_errno(config->handle) != ALPM_ERR_PKG_NOT_FOUND) {
++				alpm_errno_t err = alpm_errno(config->handle);
++				pm_printf(ALPM_LOG_ERROR, _("failed to get localdb package %s (%s)\n"), pkg_name,
++						alpm_strerror(err));
++				retval = 1;
++				goto cleanup;
++			}
++		}
++		/* order of precedence:
++		 * 1) prebuilt xdata from package
++		 * 2) existing xdata
++		 * 3) CLI params
++		 * */
++		int update_retval = 0;
++		if(localpkg)
++			update_retval |= alpm_pkg_xdata_update(pkg, alpm_pkg_get_xdata(localpkg));
++		update_retval |= alpm_pkg_xdata_update(pkg, xdata_lst);
++
++		if(update_retval != 0) {
++			pm_printf(ALPM_LOG_ERROR, _("failed to update extended data fields for package %s\n"),
++						pkg_name);
++			retval = 1;
++			goto cleanup;
 +		}
 +	}
-+	alpm_list_free_inner(xdata_lst, (alpm_list_fn_free)alpm_pkg_xdata_free);
-+	alpm_list_free(xdata_lst);
 +
  	/* Step 3: actually perform the operation */
  	if(config->print) {
  		print_packages(packages);
+@@ -889,6 +933,9 @@ int sync_prepare_execute(void)
+ 
+ 	/* Step 4: release transaction resources */
+ cleanup:
++	alpm_list_free_inner(xdata_lst, (alpm_list_fn_free)alpm_pkg_xdata_free);
++	alpm_list_free(xdata_lst);
++
+ 	alpm_list_free(data);
+ 	if(trans_release() == -1) {
+ 		retval = 1;
