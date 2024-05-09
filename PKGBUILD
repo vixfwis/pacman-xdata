@@ -1,7 +1,8 @@
 # Maintainer: Levente Polyak <anthraxx[at]archlinux[dot]org>
 # Maintainer: Morten Linderud <foxboron@archlinux.org>
 
-pkgname=pacman
+pkgname=pacman-xdata
+_pkgname=pacman
 pkgver=6.1.0
 pkgrel=3
 pkgdesc="A library-based package manager with dependency support"
@@ -13,7 +14,8 @@ depends=('bash' 'glibc' 'libarchive' 'curl' 'gpgme' 'pacman-mirrorlist'
 makedepends=('meson' 'asciidoc' 'doxygen')
 checkdepends=('python' 'fakechroot')
 optdepends=('perl-locale-gettext: translation support in makepkg-template')
-provides=('libalpm.so')
+provides=('libalpm.so' 'pacman')
+conflicts=('pacman')
 backup=(etc/pacman.conf
         etc/makepkg.conf)
 options=('strip')
@@ -44,7 +46,7 @@ sha256sums=('5a60ac6e6bf995ba6140c7d038c34448df1f3daa4ae7141d2cad88eeb5f1f9d9'
             '2465d495cb275dce434eb3bfe4d293a223e301b968c14861aea42bc7c60404ef')
 
 prepare() {
-  cd "$pkgname-$pkgver"
+  cd "$_pkgname-$pkgver"
 
   # handle patches
   local -a patches
@@ -66,7 +68,7 @@ prepare() {
 }
 
 build() {
-  cd "$pkgname-$pkgver"
+  cd "$_pkgname-$pkgver"
 
   meson --prefix=/usr \
         --buildtype=plain \
@@ -80,13 +82,13 @@ build() {
 }
 
 check() {
-  cd "$pkgname-$pkgver"
+  cd "$_pkgname-$pkgver"
 
   meson test -C build
 }
 
 package() {
-  cd "$pkgname-$pkgver"
+  cd "$_pkgname-$pkgver"
 
   DESTDIR="$pkgdir" meson install -C build
 
