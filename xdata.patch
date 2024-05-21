@@ -1,5 +1,5 @@
 diff --git a/lib/libalpm/alpm.h b/lib/libalpm/alpm.h
-index 268f7213..f944f850 100644
+index 268f7213..1a366bf3 100644
 --- a/lib/libalpm/alpm.h
 +++ b/lib/libalpm/alpm.h
 @@ -1445,6 +1445,17 @@ alpm_list_t *alpm_db_get_groupcache(alpm_db_t *db);
@@ -20,44 +20,52 @@ index 268f7213..f944f850 100644
  /** The usage level of a database. */
  typedef enum _alpm_db_usage_t {
         /** Enable refreshes for this database */
-@@ -2658,6 +2669,36 @@ int alpm_pkg_get_validation(alpm_pkg_t *pkg);
+@@ -2658,6 +2669,44 @@ int alpm_pkg_get_validation(alpm_pkg_t *pkg);
   */
  alpm_list_t *alpm_pkg_get_xdata(alpm_pkg_t *pkg);
  
-+// xdata prefix
++/** Gets user data prefix for extended data field keys
++ * @return a const reference to a key prefix
++ */
 +const char *alpm_get_userdata_prefix(void);
-+// get all notes as list of alpm_xdata_t
-+alpm_list_t *alpm_pkg_get_user_notes(alpm_pkg_t *pkg);
-+// update notes with list of alpm_xdata_t
-+int alpm_pkg_user_notes_update(alpm_pkg_t *pkg, const alpm_list_t *notes);
-+// delete note by key
-+int alpm_pkg_user_note_delete(alpm_pkg_t *pkg, const char *key);
-+// free xdata struct
-+void alpm_pkg_xdata_free(alpm_pkg_xdata_t *xdata);
 +
-+///** Updates the extended data field of a package. Will overwrite
-+// * xdata kv-pairs with same name
-+// * @param pkg a pointer to package
-+// * @param xdata_lst a reference to a list of alpm_pkg_xdata_t objects
-+// * @return 0 on success, -1 on error (pm_errno is set accordingly)
-+// */
-+//int alpm_pkg_xdata_update(alpm_pkg_t *pkg, const alpm_list_t *xdata_lst);
-+//
++/** Gets a list of user notes for a package. Caller is responsible
++ * for freeing the returned list
++ * @param pkg a pointer to package
++ * @return a reference to a list of alpm_pkg_xdata_t objects
++ */
++alpm_list_t *alpm_pkg_get_user_notes(alpm_pkg_t *pkg);
++
++/** Updates user notes with passed list. Notes names will be prepended
++ * internally with the user prefix
++ * @param pkg a pointer to package
++ * @param notes a reference to a list of alpm_pkg_xdata_t objects
++ * @return 0 on success, -1 on error (pm_errno is set accordingly)
++ */
++int alpm_pkg_user_notes_update(alpm_pkg_t *pkg, const alpm_list_t *notes);
++
++/** Deletes user notes matching passed keys list
++ * @param pkg a pointer to package
++ * @param keys a reference to a list of char*
++ * @return 0 on success, -1 on error (pm_errno is set accordingly)
++ */
++int alpm_pkg_user_notes_delete(alpm_pkg_t *pkg, const alpm_list_t *keys);
++
 +/** Parse string into an extended data structure
 + * @param string a pointer to string
 + * @return a reference to xdata on success, NULL on failure
 + */
 +alpm_pkg_xdata_t *alpm_pkg_parse_xdata(const char *string);
-+//
-+///** Free an extended data structure.
-+// * @param xdata a reference to an xdata to free
-+// */
-+//void alpm_pkg_xdata_free(alpm_pkg_xdata_t *xdata);
++
++/** Free an extended data structure.
++ * @param xdata a reference to an xdata to free
++ */
++void alpm_pkg_xdata_free(alpm_pkg_xdata_t *xdata);
 +
  /** Returns whether the package has an install scriptlet.
   * @return 0 if FALSE, TRUE otherwise
   */
-@@ -2679,6 +2720,15 @@ off_t alpm_pkg_download_size(alpm_pkg_t *newpkg);
+@@ -2679,6 +2728,15 @@ off_t alpm_pkg_download_size(alpm_pkg_t *newpkg);
   */
  int alpm_pkg_set_reason(alpm_pkg_t *pkg, alpm_pkgreason_t reason);
  
@@ -74,10 +82,10 @@ index 268f7213..f944f850 100644
  /* End of libalpm_pkg_t accessors */
  /** @} */
 diff --git a/lib/libalpm/be_local.c b/lib/libalpm/be_local.c
-index c9929181..0f2d605f 100644
+index c9929181..818d428a 100644
 --- a/lib/libalpm/be_local.c
 +++ b/lib/libalpm/be_local.c
-@@ -1205,6 +1205,32 @@ int SYMEXPORT alpm_pkg_set_reason(alpm_pkg_t *pkg, alpm_pkgreason_t reason)
+@@ -1205,6 +1205,38 @@ int SYMEXPORT alpm_pkg_set_reason(alpm_pkg_t *pkg, alpm_pkgreason_t reason)
  	return 0;
  }
  
@@ -89,14 +97,20 @@ index c9929181..0f2d605f 100644
 +	ASSERT(pkg->origin_data.db == pkg->handle->db_local,
 +			RET_ERR(pkg->handle, ALPM_ERR_WRONG_ARGS, -1));
 +	pkg->handle->pm_errno = ALPM_ERR_OK;
++	const char *prefix = alpm_get_userdata_prefix();
 +
-+	alpm_list_t *pkg_notes = alpm_pkg_get_user_notes(pkg);
-+	for(alpm_list_t *i = pkg_notes; i; i = alpm_list_next(i)) {
-+		alpm_pkg_xdata_t *note = i->data;
-+		alpm_pkg_user_note_delete(pkg, note->name);
++	alpm_list_t *pkg_xdata = alpm_pkg_get_xdata(pkg);
++	alpm_list_t *new_pkg_xdata = NULL;
++	for(alpm_list_t *i = pkg_xdata; i; i = alpm_list_next(i)) {
++		alpm_pkg_xdata_t *xdata = i->data;
++		if(strncmp(xdata->name, prefix, strlen(prefix)) != 0) {
++			alpm_pkg_xdata_t *tmp = _alpm_pkg_xdata_dup(xdata);
++			alpm_list_append(&new_pkg_xdata, tmp);
++		}
 +	}
-+	alpm_list_free_inner(pkg_notes, (alpm_list_fn_free)alpm_pkg_xdata_free);
-+	alpm_list_free(pkg_notes);
++	pkg->xdata = new_pkg_xdata;
++	alpm_list_free_inner(pkg_xdata, (alpm_list_fn_free)alpm_pkg_xdata_free);
++	alpm_list_free(pkg_xdata);
 +	alpm_pkg_user_notes_update(pkg, notes);
 +
 +	/* write DESC */
@@ -217,25 +231,10 @@ index ae1f0f74..9c6fd9b7 100644
  alpm_db_t *_alpm_db_register_sync(alpm_handle_t *handle, const char *treename,
  		int level);
 diff --git a/lib/libalpm/package.c b/lib/libalpm/package.c
-index a294d636..ad6c480b 100644
+index a294d636..30757fa9 100644
 --- a/lib/libalpm/package.c
 +++ b/lib/libalpm/package.c
-@@ -22,12 +22,14 @@
-  */
- 
- #include <limits.h>
-+#include <stdio.h>
- #include <stdlib.h>
- #include <string.h>
- #include <sys/types.h>
- 
- /* libalpm */
- #include "package.h"
-+#include "alpm.h"
- #include "alpm_list.h"
- #include "log.h"
- #include "util.h"
-@@ -35,6 +37,12 @@
+@@ -35,6 +35,12 @@
  #include "handle.h"
  #include "deps.h"
  
@@ -248,7 +247,7 @@ index a294d636..ad6c480b 100644
  int SYMEXPORT alpm_pkg_free(alpm_pkg_t *pkg)
  {
  	ASSERT(pkg != NULL, return -1);
-@@ -47,6 +55,102 @@ int SYMEXPORT alpm_pkg_free(alpm_pkg_t *pkg)
+@@ -47,6 +53,109 @@ int SYMEXPORT alpm_pkg_free(alpm_pkg_t *pkg)
  	return 0;
  }
  
@@ -317,29 +316,36 @@ index a294d636..ad6c480b 100644
 +	return 0;
 +}
 +
-+int SYMEXPORT alpm_pkg_user_note_delete(alpm_pkg_t *pkg, const char *key) {
++int SYMEXPORT alpm_pkg_user_notes_delete(alpm_pkg_t *pkg, const alpm_list_t *keys) {
 +	ASSERT(pkg != NULL, return -1);
 +	pkg->handle->pm_errno = ALPM_ERR_OK;
-+	if(key == NULL) {
++	if(keys == NULL) {
 +		return 0;
 +	}
 +	const char *prefix = alpm_get_userdata_prefix();
 +
 +	alpm_list_t *pkg_xdata_lst = alpm_pkg_get_xdata(pkg);
-+	alpm_list_t *to_delete = NULL;
++	alpm_list_t *new_pkg_xdata_lst = NULL;
 +	for(alpm_list_t *j = pkg_xdata_lst; j; j = alpm_list_next(j)) {
 +		alpm_pkg_xdata_t *pkg_xdata = j->data;
-+		if(strncmp(pkg_xdata->name, prefix, strlen(prefix)) == 0
-+				&& strcmp(pkg_xdata->name + strlen(prefix), key) == 0) {
-+			to_delete = j;
-+			break;
++		int skip_key = 0;
++		for(const alpm_list_t *i = keys; i; i = alpm_list_next(i)) {
++			const char *key = i->data;
++			if(strncmp(pkg_xdata->name, prefix, strlen(prefix)) == 0
++					&& strcmp(pkg_xdata->name + strlen(prefix), key) == 0) {
++				skip_key = 1;
++				break;
++			}
++		}
++		if(!skip_key) {
++			printf("dup %s\n", pkg_xdata->name);
++			alpm_pkg_xdata_t *tmp = _alpm_pkg_xdata_dup(pkg_xdata);
++			alpm_list_append(&new_pkg_xdata_lst, tmp);
 +		}
 +	}
-+	if(to_delete) {
-+		pkg_xdata_lst = alpm_list_remove_item(pkg_xdata_lst, to_delete);
-+		pkg->xdata = pkg_xdata_lst;
-+		alpm_pkg_xdata_free(to_delete->data);
-+	}
++	pkg->xdata = new_pkg_xdata_lst;
++	alpm_list_free_inner(pkg_xdata_lst, (alpm_list_fn_free)alpm_pkg_xdata_free);
++	alpm_list_free(pkg_xdata_lst);
 +	return 0;
 +}
 +
@@ -351,10 +357,20 @@ index a294d636..ad6c480b 100644
  int SYMEXPORT alpm_pkg_checkmd5sum(alpm_pkg_t *pkg)
  {
  	char *fpath;
-@@ -702,6 +806,26 @@ alpm_pkg_xdata_t *_alpm_pkg_parse_xdata(const char *string)
+@@ -702,6 +811,36 @@ alpm_pkg_xdata_t *_alpm_pkg_parse_xdata(const char *string)
  	return pd;
  }
  
++alpm_pkg_xdata_t *_alpm_pkg_xdata_dup(const alpm_pkg_xdata_t *xdata) {
++	alpm_pkg_xdata_t *pd;
++
++	CALLOC(pd, 1, sizeof(alpm_pkg_xdata_t), return NULL);
++	STRDUP(pd->name, xdata->name, FREE(pd); return NULL);
++	STRDUP(pd->value, xdata->value, FREE(pd->name); FREE(pd); return NULL);
++
++	return pd;
++}
++
 +alpm_pkg_xdata_t *_alpm_pkg_user_note_dup(const alpm_pkg_xdata_t *xdata, const char *prefix) {
 +  ASSERT(xdata != NULL, return NULL);
 +
@@ -379,20 +395,21 @@ index a294d636..ad6c480b 100644
  {
  	if(pd) {
 diff --git a/lib/libalpm/package.h b/lib/libalpm/package.h
-index c210ce19..18fb2be5 100644
+index c210ce19..e6810d79 100644
 --- a/lib/libalpm/package.h
 +++ b/lib/libalpm/package.h
-@@ -163,6 +163,8 @@ int _alpm_pkg_cmp(const void *p1, const void *p2);
+@@ -163,6 +163,9 @@ int _alpm_pkg_cmp(const void *p1, const void *p2);
  int _alpm_pkg_compare_versions(alpm_pkg_t *local_pkg, alpm_pkg_t *pkg);
  
  alpm_pkg_xdata_t *_alpm_pkg_parse_xdata(const char *string);
++alpm_pkg_xdata_t *_alpm_pkg_xdata_dup(const alpm_pkg_xdata_t *xdata);
 +alpm_pkg_xdata_t *_alpm_pkg_user_note_dup(const alpm_pkg_xdata_t *xdata, const char *prefix);
 +void _alpm_pkg_set_xdata(alpm_pkg_t *pkg, alpm_list_t *xdata_lst);
  void _alpm_pkg_xdata_free(alpm_pkg_xdata_t *pd);
  
  int _alpm_pkg_check_meta(alpm_pkg_t *pkg);
 diff --git a/lib/libalpm/sync.c b/lib/libalpm/sync.c
-index e73b8ffc..35d95113 100644
+index e73b8ffc..567b59f2 100644
 --- a/lib/libalpm/sync.c
 +++ b/lib/libalpm/sync.c
 @@ -1174,6 +1174,21 @@ static int load_packages(alpm_handle_t *handle, alpm_list_t **data,
@@ -417,13 +434,11 @@ index e73b8ffc..35d95113 100644
  		if(spkg->origin == ALPM_PKG_FROM_FILE) {
  			continue; /* pkg_load() has been already called, this package is valid */
  		}
-@@ -1208,6 +1223,13 @@ static int load_packages(alpm_handle_t *handle, alpm_list_t **data,
+@@ -1208,6 +1223,11 @@ static int load_packages(alpm_handle_t *handle, alpm_list_t **data,
  			continue;
  		}
  		free(filepath);
-+		/* update user notes again. if we're here,
-+		 * package struct is being replaced from file
-+		 * */
++		/* copy user notes */
 +		alpm_list_t *user_notes = alpm_pkg_get_user_notes(spkg);
 +		alpm_pkg_user_notes_update(pkgfile, user_notes);
 +		alpm_list_free_inner(user_notes, (alpm_list_fn_free)alpm_pkg_xdata_free);
@@ -432,19 +447,10 @@ index e73b8ffc..35d95113 100644
  		pkgfile->reason = spkg->reason;
  		/* copy over validation method */
 diff --git a/src/pacman/conf.c b/src/pacman/conf.c
-index 2cf56bf1..f933b855 100644
+index 2cf56bf1..c2c6b452 100644
 --- a/src/pacman/conf.c
 +++ b/src/pacman/conf.c
-@@ -35,6 +35,8 @@
- 
- /* pacman */
- #include "conf.h"
-+#include "alpm.h"
-+#include "alpm_list.h"
- #include "ini.h"
- #include "util.h"
- #include "callback.h"
-@@ -150,6 +152,9 @@ int config_free(config_t *oldconfig)
+@@ -150,6 +150,9 @@ int config_free(config_t *oldconfig)
  	FREELIST(oldconfig->noupgrade);
  	FREELIST(oldconfig->noextract);
  	FREELIST(oldconfig->overwrite_files);
@@ -489,18 +495,18 @@ index e9f17123..c9f4b107 100644
  
  /* clean method */
 diff --git a/src/pacman/database.c b/src/pacman/database.c
-index 9d46fbff..2957a9f1 100644
+index 9d46fbff..326497dd 100644
 --- a/src/pacman/database.c
 +++ b/src/pacman/database.c
-@@ -29,6 +29,7 @@
+@@ -28,6 +28,7 @@
+ 
  /* pacman */
  #include "pacman.h"
++#include "package.h"
  #include "conf.h"
-+#include "src/pacman/package.h"
  #include "util.h"
  
- /**
-@@ -91,6 +92,58 @@ static int change_install_reason(alpm_list_t *targets)
+@@ -91,6 +92,55 @@ static int change_install_reason(alpm_list_t *targets)
  	return ret;
  }
  
@@ -514,7 +520,7 @@ index 9d46fbff..2957a9f1 100644
 + * @return 0 on success, 1 on failure
 + */
 +static int change_user_notes(alpm_list_t *targets, const alpm_list_t *add, const alpm_list_t *delete) {
-+	const alpm_list_t *i, *j;
++	const alpm_list_t *i;
 +	alpm_db_t *db_local;
 +	int ret = 0;
 +
@@ -538,11 +544,8 @@ index 9d46fbff..2957a9f1 100644
 +			ret = 1;
 +			continue;
 +		}
++		alpm_pkg_user_notes_delete(pkg, delete);
 +		alpm_pkg_user_notes_update(pkg, add);
-+		for(j = delete; j; j = alpm_list_next(j)) {
-+			const char *key = j->data;
-+			alpm_pkg_user_note_delete(pkg, key);
-+		}
 +		alpm_list_t *pkg_notes = alpm_pkg_get_user_notes(pkg);
 +		alpm_pkg_set_user_notes(pkg, pkg_notes);
 +		alpm_list_free_inner(pkg_notes, (alpm_list_fn_free)alpm_pkg_xdata_free);
@@ -559,7 +562,7 @@ index 9d46fbff..2957a9f1 100644
  static int check_db_missing_deps(alpm_list_t *pkglist)
  {
  	alpm_list_t *data, *i;
-@@ -301,5 +354,31 @@ int pacman_database(alpm_list_t *targets)
+@@ -301,5 +351,31 @@ int pacman_database(alpm_list_t *targets)
  		ret = change_install_reason(targets);
  	}
  
@@ -592,7 +595,7 @@ index 9d46fbff..2957a9f1 100644
  	return ret;
  }
 diff --git a/src/pacman/package.c b/src/pacman/package.c
-index ead623a8..33bf9921 100644
+index ead623a8..8b142878 100644
 --- a/src/pacman/package.c
 +++ b/src/pacman/package.c
 @@ -82,6 +82,12 @@ enum {
@@ -667,7 +670,7 @@ index ead623a8..33bf9921 100644
 +				alpm_list_t *pkg_notes = alpm_pkg_get_user_notes(pkg);
 +				for(j = pkg_notes; j; j = alpm_list_next(j)) {
 +					alpm_pkg_xdata_t *xdata = j->data;
-+					char *user_note = calloc(1, strlen(xdata->name) + strlen(xdata->value) + 1);
++					char *user_note = calloc(1, strlen(xdata->name) + 1 + strlen(xdata->value) + 1);
 +					fputs("\n    ", stdout);
 +					sprintf(user_note, "%s=%s", xdata->name, xdata->value);
 +					indentprint(user_note, 4, cols);
@@ -851,144 +854,26 @@ index 95340db1..50cb6f6d 100644
  	alpm_list_free(data);
  	if(trans_release() == -1) {
  		retval = 1;
-diff --git a/test/pacman/notes-tests/usernote-01-change-localdb.py b/test/pacman/notes-tests/usernote-01-change-localdb.py
-new file mode 100644
-index 00000000..0be4e1b2
---- /dev/null
-+++ b/test/pacman/notes-tests/usernote-01-change-localdb.py
-@@ -0,0 +1,13 @@
-+self.description = "Change localdb notes"
-+
-+sp = pmpkg("pkg")
-+sp.xdata = ["user:note=user note", 'user:foo=bar']
-+self.addpkg2db("local", sp);
-+
-+self.args = "-D --delete-note note --delete-note foo --note-extra bar=foo pkg"
-+
-+self.addrule("PACMAN_RETCODE=0")
-+self.addrule("PKG_EXIST=pkg")
-+self.addrule("!PKG_XDATA=pkg|user:note=user note")
-+self.addrule("!PKG_XDATA=pkg|user:foo=bar")
-+self.addrule("PKG_XDATA=pkg|user:bar=foo")
-diff --git a/test/pacman/notes-tests/usernote-02-set-localdb.py b/test/pacman/notes-tests/usernote-02-set-localdb.py
-new file mode 100644
-index 00000000..b43dda16
---- /dev/null
-+++ b/test/pacman/notes-tests/usernote-02-set-localdb.py
-@@ -0,0 +1,11 @@
-+self.description = "Set note in localdb"
-+
-+sp = pmpkg("pkg")
-+self.addpkg2db("local", sp);
-+
-+self.args = "-D --note 'user note' --note-extra foo=bar pkg"
-+
-+self.addrule("PACMAN_RETCODE=0")
-+self.addrule("PKG_EXIST=pkg")
-+self.addrule("PKG_XDATA=pkg|user:note=user note")
-+self.addrule("PKG_XDATA=pkg|user:foo=bar")
-diff --git a/test/pacman/notes-tests/usernote-03-set-sync.py b/test/pacman/notes-tests/usernote-03-set-sync.py
-new file mode 100644
-index 00000000..be8a26eb
---- /dev/null
-+++ b/test/pacman/notes-tests/usernote-03-set-sync.py
-@@ -0,0 +1,11 @@
-+self.description = "Set note on install"
-+
-+sp = pmpkg("pkg")
-+self.addpkg2db("sync", sp);
-+
-+self.args = "-S --note 'user note' --note-extra foo=bar pkg"
-+
-+self.addrule("PACMAN_RETCODE=0")
-+self.addrule("PKG_EXIST=pkg")
-+self.addrule("PKG_XDATA=pkg|user:note=user note")
-+self.addrule("PKG_XDATA=pkg|user:foo=bar")
-diff --git a/test/pacman/notes-tests/usernote-04-prs-sync-reinstall.py b/test/pacman/notes-tests/usernote-04-prs-sync-reinstall.py
-new file mode 100644
-index 00000000..5960792e
---- /dev/null
-+++ b/test/pacman/notes-tests/usernote-04-prs-sync-reinstall.py
-@@ -0,0 +1,14 @@
-+self.description = "Reinstall sync package, with user note in localdb"
-+
-+sp = pmpkg("pkg")
-+self.addpkg2db("sync", sp);
-+sp = pmpkg("pkg")
-+sp.xdata = ['user:note=user note']
-+self.addpkg2db("local", sp);
-+
-+self.args = "-S --note-extra foo=bar pkg"
-+
-+self.addrule("PACMAN_RETCODE=0")
-+self.addrule("PKG_EXIST=pkg")
-+self.addrule("PKG_XDATA=pkg|user:note=user note")
-+self.addrule("PKG_XDATA=pkg|user:foo=bar")
-diff --git a/test/pacman/notes-tests/usernote-05-prs-sync-upgrade.py b/test/pacman/notes-tests/usernote-05-prs-sync-upgrade.py
-new file mode 100644
-index 00000000..d0b22e7f
---- /dev/null
-+++ b/test/pacman/notes-tests/usernote-05-prs-sync-upgrade.py
-@@ -0,0 +1,14 @@
-+self.description = "Upgrade sync package, with user note in localdb"
-+
-+sp = pmpkg("pkg", "1.1-1")
-+self.addpkg2db("sync", sp);
-+sp = pmpkg("pkg", "1.0-1")
-+sp.xdata = ['user:note=user note']
-+self.addpkg2db("local", sp);
-+
-+self.args = "-Su --note-extra foo=bar pkg"
-+
-+self.addrule("PACMAN_RETCODE=0")
-+self.addrule("PKG_EXIST=pkg")
-+self.addrule("PKG_XDATA=pkg|user:note=user note")
-+self.addrule("PKG_XDATA=pkg|user:foo=bar")
-diff --git a/test/pacman/notes-tests/usernote-06-prs-upgrade-from-file.py b/test/pacman/notes-tests/usernote-06-prs-upgrade-from-file.py
-new file mode 100644
-index 00000000..1425c786
---- /dev/null
-+++ b/test/pacman/notes-tests/usernote-06-prs-upgrade-from-file.py
-@@ -0,0 +1,15 @@
-+self.description = "Upgrade from file, with user note in localdb"
-+
-+lp = pmpkg("pkg")
-+lp.xdata=['user:note=user note']
-+self.addpkg2db("local", lp)
-+
-+p = pmpkg("pkg", "1.0-2")
-+self.addpkg(p)
-+
-+self.args = "-U --note-extra foo=bar %s" % p.filename()
-+
-+self.addrule("PACMAN_RETCODE=0")
-+self.addrule("PKG_VERSION=pkg|1.0-2")
-+self.addrule("PKG_XDATA=pkg|user:note=user note")
-+self.addrule("PKG_XDATA=pkg|user:foo=bar")
-diff --git a/test/pacman/notes-tests/usernote-07-prs-non-user-xdata.py b/test/pacman/notes-tests/usernote-07-prs-non-user-xdata.py
-new file mode 100644
-index 00000000..23cdff63
---- /dev/null
-+++ b/test/pacman/notes-tests/usernote-07-prs-non-user-xdata.py
-@@ -0,0 +1,18 @@
-+self.description = "Upgrade from file, with non-user xdata changed"
-+
-+lp = pmpkg("pkg")
-+lp.xdata=['user:note=user note', 'pkgtype=pkg']
-+self.addpkg2db("local", lp)
-+
-+p = pmpkg("pkg", "1.0-2")
-+p.xdata=['newfield=test']
-+self.addpkg(p)
-+
-+self.args = "-U --note-extra foo=bar %s" % p.filename()
-+
-+self.addrule("PACMAN_RETCODE=0")
-+self.addrule("PKG_VERSION=pkg|1.0-2")
-+self.addrule("PKG_XDATA=pkg|user:note=user note")
-+self.addrule("PKG_XDATA=pkg|user:foo=bar")
-+self.addrule("PKG_XDATA=pkg|newfield=test")
-+self.addrule("!PKG_XDATA=pkg|pkgtype=pkg")
+diff --git a/test/pacman/meson.build b/test/pacman/meson.build
+index f223f1f4..4f7f79fa 100644
+--- a/test/pacman/meson.build
++++ b/test/pacman/meson.build
+@@ -340,6 +340,15 @@ pacman_tests = [
+   'tests/upgrade-download-404.py',
+   'tests/upgrade-download-pkg-and-sig-with-filename.py',
+   'tests/upgrade-download-with-xfercommand.py',
++  'tests/usernote-01-change-localdb.py',
++  'tests/usernote-02-set-localdb.py',
++  'tests/usernote-03-set-sync.py',
++  'tests/usernote-04-prs-sync-reinstall.py',
++  'tests/usernote-05-prs-sync-upgrade.py',
++  'tests/usernote-06-prs-upgrade-from-file.py',
++  'tests/usernote-07-prs-non-user-xdata.py',
++  'tests/usernote-08-query-note-search.py',
++  'tests/usernote-09-query-note-info.py',
+ ]
+ 
+ xfail_tests = {
 diff --git a/test/pacman/pmdb.py b/test/pacman/pmdb.py
 index 433c22e2..06f54a85 100644
 --- a/test/pacman/pmdb.py
@@ -1063,3 +948,176 @@ index ca342138..66fd8d5a 100644
                  else:
                      tap.diag("PKG rule '%s' not found" % case)
                      success = -1
+diff --git a/test/pacman/tests/usernote-01-change-localdb.py b/test/pacman/tests/usernote-01-change-localdb.py
+new file mode 100644
+index 00000000..0be4e1b2
+--- /dev/null
++++ b/test/pacman/tests/usernote-01-change-localdb.py
+@@ -0,0 +1,13 @@
++self.description = "Change localdb notes"
++
++sp = pmpkg("pkg")
++sp.xdata = ["user:note=user note", 'user:foo=bar']
++self.addpkg2db("local", sp);
++
++self.args = "-D --delete-note note --delete-note foo --note-extra bar=foo pkg"
++
++self.addrule("PACMAN_RETCODE=0")
++self.addrule("PKG_EXIST=pkg")
++self.addrule("!PKG_XDATA=pkg|user:note=user note")
++self.addrule("!PKG_XDATA=pkg|user:foo=bar")
++self.addrule("PKG_XDATA=pkg|user:bar=foo")
+diff --git a/test/pacman/tests/usernote-02-set-localdb.py b/test/pacman/tests/usernote-02-set-localdb.py
+new file mode 100644
+index 00000000..b43dda16
+--- /dev/null
++++ b/test/pacman/tests/usernote-02-set-localdb.py
+@@ -0,0 +1,11 @@
++self.description = "Set note in localdb"
++
++sp = pmpkg("pkg")
++self.addpkg2db("local", sp);
++
++self.args = "-D --note 'user note' --note-extra foo=bar pkg"
++
++self.addrule("PACMAN_RETCODE=0")
++self.addrule("PKG_EXIST=pkg")
++self.addrule("PKG_XDATA=pkg|user:note=user note")
++self.addrule("PKG_XDATA=pkg|user:foo=bar")
+diff --git a/test/pacman/tests/usernote-03-set-sync.py b/test/pacman/tests/usernote-03-set-sync.py
+new file mode 100644
+index 00000000..be8a26eb
+--- /dev/null
++++ b/test/pacman/tests/usernote-03-set-sync.py
+@@ -0,0 +1,11 @@
++self.description = "Set note on install"
++
++sp = pmpkg("pkg")
++self.addpkg2db("sync", sp);
++
++self.args = "-S --note 'user note' --note-extra foo=bar pkg"
++
++self.addrule("PACMAN_RETCODE=0")
++self.addrule("PKG_EXIST=pkg")
++self.addrule("PKG_XDATA=pkg|user:note=user note")
++self.addrule("PKG_XDATA=pkg|user:foo=bar")
+diff --git a/test/pacman/tests/usernote-04-prs-sync-reinstall.py b/test/pacman/tests/usernote-04-prs-sync-reinstall.py
+new file mode 100644
+index 00000000..5960792e
+--- /dev/null
++++ b/test/pacman/tests/usernote-04-prs-sync-reinstall.py
+@@ -0,0 +1,14 @@
++self.description = "Reinstall sync package, with user note in localdb"
++
++sp = pmpkg("pkg")
++self.addpkg2db("sync", sp);
++sp = pmpkg("pkg")
++sp.xdata = ['user:note=user note']
++self.addpkg2db("local", sp);
++
++self.args = "-S --note-extra foo=bar pkg"
++
++self.addrule("PACMAN_RETCODE=0")
++self.addrule("PKG_EXIST=pkg")
++self.addrule("PKG_XDATA=pkg|user:note=user note")
++self.addrule("PKG_XDATA=pkg|user:foo=bar")
+diff --git a/test/pacman/tests/usernote-05-prs-sync-upgrade.py b/test/pacman/tests/usernote-05-prs-sync-upgrade.py
+new file mode 100644
+index 00000000..d0b22e7f
+--- /dev/null
++++ b/test/pacman/tests/usernote-05-prs-sync-upgrade.py
+@@ -0,0 +1,14 @@
++self.description = "Upgrade sync package, with user note in localdb"
++
++sp = pmpkg("pkg", "1.1-1")
++self.addpkg2db("sync", sp);
++sp = pmpkg("pkg", "1.0-1")
++sp.xdata = ['user:note=user note']
++self.addpkg2db("local", sp);
++
++self.args = "-Su --note-extra foo=bar pkg"
++
++self.addrule("PACMAN_RETCODE=0")
++self.addrule("PKG_EXIST=pkg")
++self.addrule("PKG_XDATA=pkg|user:note=user note")
++self.addrule("PKG_XDATA=pkg|user:foo=bar")
+diff --git a/test/pacman/tests/usernote-06-prs-upgrade-from-file.py b/test/pacman/tests/usernote-06-prs-upgrade-from-file.py
+new file mode 100644
+index 00000000..1425c786
+--- /dev/null
++++ b/test/pacman/tests/usernote-06-prs-upgrade-from-file.py
+@@ -0,0 +1,15 @@
++self.description = "Upgrade from file, with user note in localdb"
++
++lp = pmpkg("pkg")
++lp.xdata=['user:note=user note']
++self.addpkg2db("local", lp)
++
++p = pmpkg("pkg", "1.0-2")
++self.addpkg(p)
++
++self.args = "-U --note-extra foo=bar %s" % p.filename()
++
++self.addrule("PACMAN_RETCODE=0")
++self.addrule("PKG_VERSION=pkg|1.0-2")
++self.addrule("PKG_XDATA=pkg|user:note=user note")
++self.addrule("PKG_XDATA=pkg|user:foo=bar")
+diff --git a/test/pacman/tests/usernote-07-prs-non-user-xdata.py b/test/pacman/tests/usernote-07-prs-non-user-xdata.py
+new file mode 100644
+index 00000000..23cdff63
+--- /dev/null
++++ b/test/pacman/tests/usernote-07-prs-non-user-xdata.py
+@@ -0,0 +1,18 @@
++self.description = "Upgrade from file, with non-user xdata changed"
++
++lp = pmpkg("pkg")
++lp.xdata=['user:note=user note', 'pkgtype=pkg']
++self.addpkg2db("local", lp)
++
++p = pmpkg("pkg", "1.0-2")
++p.xdata=['newfield=test']
++self.addpkg(p)
++
++self.args = "-U --note-extra foo=bar %s" % p.filename()
++
++self.addrule("PACMAN_RETCODE=0")
++self.addrule("PKG_VERSION=pkg|1.0-2")
++self.addrule("PKG_XDATA=pkg|user:note=user note")
++self.addrule("PKG_XDATA=pkg|user:foo=bar")
++self.addrule("PKG_XDATA=pkg|newfield=test")
++self.addrule("!PKG_XDATA=pkg|pkgtype=pkg")
+diff --git a/test/pacman/tests/usernote-08-query-note-search.py b/test/pacman/tests/usernote-08-query-note-search.py
+new file mode 100644
+index 00000000..48acb57b
+--- /dev/null
++++ b/test/pacman/tests/usernote-08-query-note-search.py
+@@ -0,0 +1,12 @@
++self.description = "Search for user note"
++
++sp = pmpkg("searchpkg")
++sp.xdata = ['user:foo=bar']
++self.addpkg2db("local", sp);
++
++self.args = "-Q --note-search bar"
++
++self.addrule("PACMAN_RETCODE=0")
++self.addrule("PACMAN_OUTPUT=searchpkg")
++self.addrule("PACMAN_OUTPUT=foo=bar")
++
+diff --git a/test/pacman/tests/usernote-09-query-note-info.py b/test/pacman/tests/usernote-09-query-note-info.py
+new file mode 100644
+index 00000000..fc13a294
+--- /dev/null
++++ b/test/pacman/tests/usernote-09-query-note-info.py
+@@ -0,0 +1,11 @@
++self.description = "Print user notes in pkg info query"
++
++sp = pmpkg("pkg")
++sp.xdata = ['user:foo=bar']
++self.addpkg2db("local", sp);
++
++self.args = "-Qi pkg"
++
++self.addrule("PACMAN_RETCODE=0")
++self.addrule("PACMAN_OUTPUT=foo=bar")
++
